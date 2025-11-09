@@ -1,0 +1,96 @@
+   ---------------------- Order Book Overview -----------------------
+
+   ┌─────────────┐               ┌─────────────┐
+   │   bids_     │               │   asks_     │
+   │(Buy Orders) │               │(Sell Orders)│
+   └─────────────┘               └─────────────┘
+         │                            │
+         ▼                            ▼
+   +---------------------------------------+   +--------------------------------------+
+   | Price | List of orders (FIFO)         |   | Price | List of orders (FIFO)        |
+   +-------+-------------------------------+   +-------+------------------------------+
+   | 105   | [o7] → [o9]                   |   | 108   | [o12]                        |
+   | 103   | [o2]                          |   | 110   | [o15] → [o18]                |
+   | 102   | [o1] → [o4]                   |   | 112   | [o20]                        |
+   +-------+-------------------------------+   +-------+------------------------------+
+
+   - Each price level maps to an FIFO queue (linked list) of order pointers.
+   - New orders at a price go to the back of their price level.
+   - Orders left-most (oldest) are matched first.
+
+---------------------------------------------------------------------------------------
+
+   ┌-----------------------------┐
+   │      orders_                │
+   │ unordered_map<OrderId, OE>  │
+   └-----------------------------┘
+
+   For fast lookup and efficient cancel/modify:
+   +-------------------+---------------------------+
+   | OrderId           | OrderEntry                |
+   +-------------------+---------------------------+
+   | 10001             | { ptr => [o2], location } |
+   | 10004             | { ptr => [o9], location } |
+   | 10012             | { ptr => [o12], location }|
+   | 10018             | { ptr => [o18], location }|
+   +-------------------+---------------------------+
+
+   - OE = OrderEntry = {pointer to original order object, iterator into price-level list}
+   - Lets you instantly find, modify, or remove any order.
+
+---------------------------------------------------------------------------------------
+
+        OrderEntry details:
+        ┌──────────────────────────────┐
+        │  struct OrderEntry {         │
+        │      OrderPointer ptr;       │
+        │      iterator location;      │
+        │  }                          │
+        └──────────────────────────────┘
+        - location points to the order's node in bids_/asks_ FIFO for O(1) removal.
+
+---------------------------------------------------------------------------------------
+
+        Example Matching Process (Buy order hits Sell):
+
+        bids_:
+        105: [o7] → [o9]
+        103: [o2]
+
+        asks_:
+        102: [o4] ← MATCH ← [o1]
+        -------------------------------------
+        - Matching looks for bid ≥ ask
+        - Oldest order at that price fills first
+
+---------------------------------------------------------------------------------------
+
+       Cancel Scenario:
+       - To cancel OrderId 10018:
+           1. orders_.find(10018) -> OrderEntry{ptr, location}
+           2. Remove from price list (asks_[110].erase(location))
+           3. Remove from orders_ hash map
+
+---------------------------------------------------------------------------------------
+
+Legend:
+    oX  = OrderPointer (smart pointer, e.g. std::shared_ptr<Order>)
+    →   = next order in FIFO queue
+    Price levels in bids_ (sorted descending), asks_ (sorted ascending)
+
+---------------------------------------------------------------------------------------
+
+Summary:
+  - bids_ and asks_ provide sorted price levels with FIFO queues for matching
+  - orders_ provides instant lookup for cancel/modify
+  - Combining maps and lists allows fast matching, modifications, and precise order control
+
+Note: This structure supports fast and correct matching, cancel, and update operations 
+      required for trading systems and financial exchanges.
+
+---------------------------------------------------------------------------------------
+
+Repo Update Note:
+This public repository may not be updated frequently; main project development is in a private repo :)) .
+
+---------------------------------------------------------------------------------------
